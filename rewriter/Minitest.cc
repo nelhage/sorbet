@@ -176,7 +176,7 @@ unique_ptr<ast::Expression> getIteratee(unique_ptr<ast::Expression> &exp) {
 // this applies to each statement contained within a `test_each`: if it's an `it`-block, then convert it appropriately,
 // otherwise flag an error about it
 unique_ptr<ast::Expression> runUnderEach(core::MutableContext ctx, unique_ptr<ast::Expression> stmt,
-                                         unique_ptr<ast::Expression> &arg, unique_ptr<ast::Expression> &iteratee) {
+                                         ast::MethodDef::ARGS_store &args, unique_ptr<ast::Expression> &iteratee) {
     // this statement must be a send
     if (auto send = ast::cast_tree<ast::Send>(stmt.get())) {
         // the send must be a call to `it` with a single argument (the test name) and a block with no arguments
@@ -192,7 +192,11 @@ unique_ptr<ast::Expression> runUnderEach(core::MutableContext ctx, unique_ptr<as
             body = ast::TreeMap::apply(ctx, constantMover, move(body));
 
             // pull the arg and the iteratee in and synthesize `iterate.each { |arg| body }`
-            auto blk = ast::MK::Block1(send->loc, move(body), arg->deepCopy());
+            ast::MethodDef::ARGS_store new_args;
+            for (auto &arg : args) {
+                new_args.emplace_back(arg->deepCopy());
+            }
+            auto blk = ast::MK::Block(send->loc, move(body), std::move(new_args));
             auto each = ast::MK::Send0Block(send->loc, iteratee->deepCopy(), core::Names::each(), move(blk));
             // put that into a method def named the appropriate thing
             auto method = addSigVoid(
@@ -211,17 +215,17 @@ unique_ptr<ast::Expression> runUnderEach(core::MutableContext ctx, unique_ptr<as
 
 // this just walks the body of a `test_each` and tries to transform every statement
 unique_ptr<ast::Expression> prepareTestEachBody(core::MutableContext ctx, unique_ptr<ast::Expression> body,
-                                                unique_ptr<ast::Expression> &arg,
+                                                ast::MethodDef::ARGS_store &args,
                                                 unique_ptr<ast::Expression> &iteratee) {
     auto bodySeq = ast::cast_tree<ast::InsSeq>(body.get());
     if (bodySeq) {
         for (auto &exp : bodySeq->stats) {
-            exp = runUnderEach(ctx, std::move(exp), arg, iteratee);
+            exp = runUnderEach(ctx, std::move(exp), args, iteratee);
         }
 
-        bodySeq->expr = runUnderEach(ctx, std::move(bodySeq->expr), arg, iteratee);
+        bodySeq->expr = runUnderEach(ctx, std::move(bodySeq->expr), args, iteratee);
     } else {
-        body = runUnderEach(ctx, std::move(body), arg, iteratee);
+        body = runUnderEach(ctx, std::move(body), args, iteratee);
     }
 
     return body;
@@ -236,10 +240,10 @@ unique_ptr<ast::Expression> runSingle(core::MutableContext ctx, ast::Send *send)
         return nullptr;
     }
 
-    if (send->fun == core::Names::testEach() && send->args.size() == 1 && send->block != nullptr &&
-        send->block->args.size() == 1) {
-        // if this has the form `test_each(expr) { |arg | .. }`, then start by trying to convert `expr` into a thing we
-        // can freely copy into methoddef scope
+    if ((send->fun == core::Names::testEach() || send->fun == core::Names::testEachHash()) && send->args.size() == 1 &&
+        send->block != nullptr) {
+        // if this has the form `test_each(expr) { |arg...| .. }`, then start by trying to convert `expr` into a thing
+        // we can freely copy into methoddef scope
         auto iteratee = getIteratee(send->args.front());
         // and then reconstruct the send but with a modified body
         ast::Send::ARGS_store args;
@@ -247,7 +251,7 @@ unique_ptr<ast::Expression> runSingle(core::MutableContext ctx, ast::Send *send)
         return ast::MK::Send(
             send->loc, ast::MK::Self(send->loc), send->fun, std::move(args), send->flags,
             ast::MK::Block(send->block->loc,
-                           prepareTestEachBody(ctx, std::move(send->block->body), send->block->args.front(), iteratee),
+                           prepareTestEachBody(ctx, std::move(send->block->body), send->block->args, iteratee),
                            std::move(send->block->args)));
     }
 
