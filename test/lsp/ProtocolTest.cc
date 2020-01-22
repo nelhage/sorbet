@@ -80,6 +80,10 @@ unique_ptr<LSPMessage> ProtocolTest::workspaceSymbol(string_view query) {
     return makeWorkspaceSymbolRequest(nextId++, query);
 }
 
+unique_ptr<LSPMessage> ProtocolTest::hover(string_view path, int line, int character) {
+    return makeHover(nextId++, getUri(path), line, character);
+}
+
 unique_ptr<LSPMessage> ProtocolTest::getDefinition(string_view path, int line, int character) {
     return makeDefinitionRequest(nextId++, getUri(path), line, character);
 }

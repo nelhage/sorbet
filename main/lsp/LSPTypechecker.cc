@@ -396,7 +396,6 @@ void LSPTypechecker::pushDiagnostics(u4 epoch, vector<core::FileRef> filesTypech
         // Ignore errors from files that have been typechecked on newer versions (e.g. because they preempted the slow
         // path). We also ignore errors from files that don't exist (which does, in fact, happen).
         // TODO(jvilk): See overflow comment above.
-        ENFORCE(!accumulated.first.exists() || diagnosticEpochs[accumulated.first.id()] == epoch);
         if (accumulated.first.exists() && diagnosticEpochs[accumulated.first.id()] <= epoch) {
             errorFilesInNewRun.push_back(accumulated.first);
         }
