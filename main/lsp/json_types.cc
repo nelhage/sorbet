@@ -206,6 +206,7 @@ void LSPFileUpdates::mergeOlder(const LSPFileUpdates &older) {
     editCount += older.editCount;
     hasNewFiles = hasNewFiles || older.hasNewFiles;
     cancellationExpected = cancellationExpected || older.cancellationExpected;
+    preemptionsExpected += older.preemptionsExpected;
 
     ENFORCE(updatedFiles.size() == updatedFileHashes.size());
     ENFORCE(updatedFiles.size() == updatedFileIndexes.size());
