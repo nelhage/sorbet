@@ -821,6 +821,7 @@ void makeLSPTypes(vector<shared_ptr<JSONClassType>> &enumTypes, vector<shared_pt
                        makeField("contentChanges", makeArray(TextDocumentContentChangeEvent)),
                        // Used in tests only.
                        makeField("sorbetCancellationExpected", makeOptional(JSONBool)),
+                       makeField("sorbetPreemptionsExpected", makeOptional(JSONInt)),
                    },
                    classTypes, {"std::string getSource(std::string_view oldFileContents) const;"});
 

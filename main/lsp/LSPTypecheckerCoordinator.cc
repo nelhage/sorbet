@@ -127,10 +127,10 @@ void LSPTypecheckerCoordinator::asyncRunInternal(shared_ptr<core::lsp::Task> tas
 
 void LSPTypecheckerCoordinator::syncRun(unique_ptr<LSPTask> task) {
     // All single-threaded tasks can preempt.
-    const bool canPreempt = task->enableMultithreading;
+    const bool canPreempt = !task->enableMultithreading;
     absl::Notification notification;
     auto wrappedTask = make_shared<TypecheckerTask>(
-        move(task), make_unique<LSPTypecheckerDelegate>(canPreempt ? workers : *emptyWorkers, typechecker),
+        move(task), make_unique<LSPTypecheckerDelegate>(canPreempt ? *emptyWorkers : workers, typechecker),
         hasDedicatedThread);
 
     // If we cannot preempt OR scheduling preemption failed, enqueue the task normally.
