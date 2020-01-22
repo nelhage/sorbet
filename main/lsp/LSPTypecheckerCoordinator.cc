@@ -1,5 +1,6 @@
 #include "main/lsp/LSPTypecheckerCoordinator.h"
 #include "absl/synchronization/notification.h"
+#include "core/lsp/PreemptionTaskManager.h"
 #include "core/lsp/TypecheckEpochManager.h"
 #include "main/lsp/LSPTask.h"
 
@@ -110,8 +111,10 @@ public:
 }; // namespace
 
 LSPTypecheckerCoordinator::LSPTypecheckerCoordinator(const shared_ptr<const LSPConfiguration> &config,
+                                                     shared_ptr<core::lsp::PreemptionTaskManager> preemptionTaskManager,
                                                      WorkerPool &workers)
-    : shouldTerminate(false), typechecker(config), config(config), hasDedicatedThread(false), workers(workers),
+    : preemptionTaskManager(preemptionTaskManager), shouldTerminate(false),
+      typechecker(config, move(preemptionTaskManager)), config(config), hasDedicatedThread(false), workers(workers),
       emptyWorkers(WorkerPool::create(0, *config->logger)) {}
 
 void LSPTypecheckerCoordinator::asyncRunInternal(shared_ptr<core::lsp::Task> task) {
@@ -123,11 +126,18 @@ void LSPTypecheckerCoordinator::asyncRunInternal(shared_ptr<core::lsp::Task> tas
 }
 
 void LSPTypecheckerCoordinator::syncRun(unique_ptr<LSPTask> task) {
-    // TODO(jvilk): Give single-threaded tasks a single-threaded workerpool once we land preemption.
+    // All single-threaded tasks can preempt.
+    const bool canPreempt = task->enableMultithreading;
     absl::Notification notification;
     auto wrappedTask = make_shared<TypecheckerTask>(
-        move(task), make_unique<LSPTypecheckerDelegate>(workers, typechecker), hasDedicatedThread);
-    asyncRunInternal(wrappedTask);
+        move(task), make_unique<LSPTypecheckerDelegate>(canPreempt ? workers : *emptyWorkers, typechecker),
+        hasDedicatedThread);
+
+    // If we cannot preempt OR scheduling preemption failed, enqueue the task normally.
+    if (!canPreempt || !preemptionTaskManager->trySchedulePreemptionTask(wrappedTask)) {
+        asyncRunInternal(wrappedTask);
+    }
+
     wrappedTask->blockUntilComplete();
 }
 

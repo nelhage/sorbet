@@ -191,6 +191,7 @@ LSPFileUpdates LSPLoop::commitEdit(SorbetWorkspaceEditParams &edit) {
     update.updatedFiles = move(edit.updates);
     update.canTakeFastPath = canTakeFastPath(*initialGS, *config, globalStateHashes, update);
     update.cancellationExpected = edit.sorbetCancellationExpected;
+    update.preemptionsExpected = edit.sorbetPreemptionsExpected;
 
     // Update globalStateHashes. Keep track of file IDs for these files, along with old hashes for these files.
     vector<core::FileRef> frefs;
@@ -273,10 +274,18 @@ LSPFileUpdates LSPLoop::commitEdit(SorbetWorkspaceEditParams &edit) {
     if (!update.canTakeFastPath) {
         update.updatedGS = initialGS->deepCopy();
         pendingTypecheckUpdates = update.copy();
-        // Don't copy over the cancellation expected property, as it only applies to the original request.
-        pendingTypecheckUpdates.cancellationExpected = false;
         pendingTypecheckEvictedStateHashes = std::move(evictedHashes);
+    } else {
+        // Edit takes the fast path. Merge with this edit so we can reverse it if the slow path gets canceled.
+        auto merged = update.copy();
+        merged.mergeOlder(pendingTypecheckUpdates);
+        auto mergedEvictions = mergeEvictions(pendingTypecheckEvictedStateHashes, evictedHashes);
+        pendingTypecheckUpdates = move(merged);
+        pendingTypecheckEvictedStateHashes = std::move(mergedEvictions);
     }
+    // Don't copy over these (test-only) properties, as they only apply to the original request.
+    pendingTypecheckUpdates.cancellationExpected = false;
+    pendingTypecheckUpdates.preemptionsExpected = 0;
 
     return update;
 }
