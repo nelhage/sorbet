@@ -101,6 +101,8 @@ vector<core::FileRef> LSPTypechecker::restore(UndoState &undoState) {
 void LSPTypechecker::initialize(LSPFileUpdates updates, WorkerPool &workers) {
     ENFORCE(this_thread::get_id() == typecheckerThreadId, "Typechecker can only be used from the typechecker thread.");
     ENFORCE(!this->initialized);
+    // We should always initialize with epoch 0.
+    ENFORCE(updates.epoch == 0);
     this->initialized = true;
     globalStateHashes = move(updates.updatedFileHashes);
     indexed = move(updates.updatedFileIndexes);
@@ -250,7 +252,7 @@ bool LSPTypechecker::runSlowPath(LSPFileUpdates updates, WorkerPool &workers, bo
             "runSlowPath can only be called from the typechecker thread.");
 
     auto &logger = config->logger;
-    ShowOperation slowPathOp(*config, "SlowPath", "Typechecking...");
+    unique_ptr<ShowOperation> slowPathOp = make_unique<ShowOperation>(*config, "SlowPath", "Typechecking...");
     Timer timeit(logger, "slow_path");
     ENFORCE(!updates.canTakeFastPath || config->disableFastPath);
     ENFORCE(updates.updatedGS.has_value());
@@ -323,6 +325,8 @@ bool LSPTypechecker::runSlowPath(LSPFileUpdates updates, WorkerPool &workers, bo
 
         // Inform the fast path that this global state is OK for typechecking as resolution has completed.
         gs->lspTypecheckCount++;
+        // Inform users that Sorbet should be responsive now.
+        slowPathOp = make_unique<ShowOperation>(*config, "SlowPath", "Typechecking in background");
 
         // [Test only] Wait for a preemption if one is expected.
         if (updates.preemptionsExpected > 0) {

@@ -150,12 +150,52 @@ TEST_P(ProtocolTest, CanPreemptSlowPathWithHover) {
         EXPECT_TRUE(absl::StrContains(hoverText->contents->value, "A class that does things"));
     }
 
-    // Second should be typecheck run signaling that typechecking completed. No typechecking errors are expected.
+    // Second should be typecheck run signaling that typechecking completed.
     {
         auto status = getTypecheckRunStatus(*readAsync());
         ASSERT_TRUE(status.has_value());
         ASSERT_EQ(*status, SorbetTypecheckRunStatus::Ended);
     }
+}
+
+TEST_P(ProtocolTest, CanPreemptSlowPathWithHoverAndReturnsErrors) {
+    auto initOptions = make_unique<SorbetInitializationOptions>();
+    initOptions->enableTypecheckInfo = true;
+    assertDiagnostics(initializeLSP(true /* supportsMarkdown */, move(initOptions)), {});
+
+    // Create a new file.
+    assertDiagnostics(send(*openFile("foo.rb", "")), {});
+
+    // Slow path: Edit foo to have a class with a documentation string and a method with an error.
+    sendAsync(*changeFile("foo.rb",
+                          "# typed: true\n# A class that does things.\nclass Foo\nextend "
+                          "T::Sig\nsig{returns(String)}\ndef bar\n3\nend\nend\n",
+                          2, false, 1));
+
+    // Wait for typechecking to begin to avoid races.
+    {
+        auto status = getTypecheckRunStatus(*readAsync());
+        ASSERT_TRUE(status.has_value());
+        ASSERT_EQ(*status, SorbetTypecheckRunStatus::Started);
+    }
+
+    // Send a hover to request the documentation string.
+    sendAsync(*hover("foo.rb", 2, 6));
+
+    // First response should be hover.
+    {
+        auto response = readAsync();
+        ASSERT_TRUE(response->isResponse());
+        auto &hoverText =
+            get<unique_ptr<Hover>>(get<variant<JSONNullObject, unique_ptr<Hover>>>(*response->asResponse().result));
+        EXPECT_TRUE(absl::StrContains(hoverText->contents->value, "A class that does things"));
+    }
+
+    // Send a no-op to clear out the pipeline. Should have one error in `foo.rb`.
+    assertDiagnostics(send(LSPMessage(make_unique<NotificationMessage>("2.0", LSPMethod::SorbetFence, 20))),
+                      {
+                          {"foo.rb", 6, "Returning value that does not conform to method result type"},
+                      });
 }
 
 TEST_P(ProtocolTest, CanPreemptSlowPathWithFastPath) {
