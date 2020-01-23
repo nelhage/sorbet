@@ -325,8 +325,12 @@ bool LSPTypechecker::runSlowPath(LSPFileUpdates updates, WorkerPool &workers, bo
 
         // Inform the fast path that this global state is OK for typechecking as resolution has completed.
         gs->lspTypecheckCount++;
-        // Inform users that Sorbet should be responsive now.
-        slowPathOp = make_unique<ShowOperation>(*config, "SlowPathNonBlocking", "Typechecking in background");
+        if (preemptManager.has_value()) {
+            // Inform users that Sorbet should be responsive now.
+            // Explicitly end previous operation before beginning next operation.
+            slowPathOp = nullptr;
+            slowPathOp = make_unique<ShowOperation>(*config, "SlowPathNonBlocking", "Typechecking in background");
+        }
 
         // [Test only] Wait for a preemption if one is expected.
         if (updates.preemptionsExpected > 0) {
