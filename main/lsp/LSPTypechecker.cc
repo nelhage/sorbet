@@ -252,7 +252,7 @@ bool LSPTypechecker::runSlowPath(LSPFileUpdates updates, WorkerPool &workers, bo
             "runSlowPath can only be called from the typechecker thread.");
 
     auto &logger = config->logger;
-    unique_ptr<ShowOperation> slowPathOp = make_unique<ShowOperation>(*config, "SlowPath", "Typechecking...");
+    unique_ptr<ShowOperation> slowPathOp = make_unique<ShowOperation>(*config, "SlowPathBlocking", "Typechecking...");
     Timer timeit(logger, "slow_path");
     ENFORCE(!updates.canTakeFastPath || config->disableFastPath);
     ENFORCE(updates.updatedGS.has_value());
@@ -326,7 +326,7 @@ bool LSPTypechecker::runSlowPath(LSPFileUpdates updates, WorkerPool &workers, bo
         // Inform the fast path that this global state is OK for typechecking as resolution has completed.
         gs->lspTypecheckCount++;
         // Inform users that Sorbet should be responsive now.
-        slowPathOp = make_unique<ShowOperation>(*config, "SlowPath", "Typechecking in background");
+        slowPathOp = make_unique<ShowOperation>(*config, "SlowPathNonBlocking", "Typechecking in background");
 
         // [Test only] Wait for a preemption if one is expected.
         if (updates.preemptionsExpected > 0) {
@@ -363,6 +363,7 @@ bool LSPTypechecker::runSlowPath(LSPFileUpdates updates, WorkerPool &workers, bo
         cancellationUndoState = nullopt;
         // Send diagnostics to client (we already committed file updates earlier).
         pushDiagnostics(updates.epoch, move(affectedFiles), move(out.first));
+        logger->debug("[Typechecker] Typecheck run for epoch {} successfully finished.", updates.epoch);
     } else {
         prodCategoryCounterInc("lsp.updates", "slowpath_canceled");
         // Update responsible will use state in `cancellationUndoState` to restore typechecker to the point before
