@@ -1,4 +1,5 @@
 #include "core/lsp/PreemptionTaskManager.h"
+#include "core/ErrorQueue.h"
 #include "core/lsp/Task.h"
 #include "core/lsp/TypecheckEpochManager.h"
 
@@ -32,7 +33,7 @@ bool PreemptionTaskManager::trySchedulePreemptionTask(std::shared_ptr<Task> task
     return success;
 }
 
-bool PreemptionTaskManager::tryRunScheduledPreemptionTask() {
+bool PreemptionTaskManager::tryRunScheduledPreemptionTask(core::GlobalState &gs) {
     TypecheckEpochManager::assertConsistentThread(
         typecheckingThreadId, "PreemptionTaskManager::tryRunScheduledPreemptionTask", "typechecking thread");
     auto preemptTask = atomic_load(&this->preemptTask);
@@ -41,7 +42,12 @@ bool PreemptionTaskManager::tryRunScheduledPreemptionTask() {
         absl::MutexLock lock(&typecheckMutex);
         // Invariant: Typechecking _cannot_ be canceled before or during a preemption task.
         ENFORCE(!epochManager->wasTypecheckingCanceled());
+        // Save old error queue and replace so new operation starts fresh
+        auto previousErrorQueue = move(gs.errorQueue);
+        gs.errorQueue = make_shared<core::ErrorQueue>(previousErrorQueue->logger, previousErrorQueue->tracer);
+        gs.errorQueue->ignoreFlushes = true;
         preemptTask->run();
+        gs.errorQueue = move(previousErrorQueue);
         atomic_store(&this->preemptTask, shared_ptr<lsp::Task>(nullptr));
         ENFORCE(!epochManager->wasTypecheckingCanceled());
         return true;

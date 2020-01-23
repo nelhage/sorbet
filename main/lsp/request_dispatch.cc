@@ -86,6 +86,7 @@ public:
         // going to use it on typechecker thread for this one operation.
         auto savedErrorQueue = initialGS->errorQueue;
         initialGS->errorQueue = make_shared<core::ErrorQueue>(savedErrorQueue->logger, savedErrorQueue->tracer);
+        initialGS->errorQueue->ignoreFlushes = true;
         // Enforce that this is only run once.
         ENFORCE(globalStateHashes.empty());
 

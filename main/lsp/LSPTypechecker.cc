@@ -269,7 +269,7 @@ bool LSPTypechecker::runSlowPath(LSPFileUpdates updates, WorkerPool &workers, bo
     auto &epochManager = *finalGS->epochManager;
     // Note: Commits can only be canceled if this edit is cancelable, LSP is running across multiple threads, and the
     // cancelation feature is enabled.
-    const bool committed = epochManager.tryCommitEpoch(updates.epoch, cancelable, preemptManager, [&]() -> void {
+    const bool committed = epochManager.tryCommitEpoch(*gs, updates.epoch, cancelable, preemptManager, [&]() -> void {
         UnorderedSet<int> updatedFiles;
         vector<ast::ParsedFile> indexedCopies;
 
@@ -337,7 +337,7 @@ bool LSPTypechecker::runSlowPath(LSPFileUpdates updates, WorkerPool &workers, bo
             ENFORCE(preemptManager.has_value());
             int preemptionsExpected = updates.preemptionsExpected;
             while (preemptionsExpected > 0) {
-                while (!preemptManager.value()->tryRunScheduledPreemptionTask()) {
+                while (!preemptManager.value()->tryRunScheduledPreemptionTask(*gs)) {
                     Timer::timedSleep(1ms, *logger, "slow_path.expected_preemption.sleep");
                 }
                 preemptionsExpected--;

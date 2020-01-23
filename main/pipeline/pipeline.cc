@@ -928,7 +928,7 @@ ast::ParsedFilesOrCancelled typecheck(unique_ptr<core::GlobalState> &gs, vector<
         Timer timeit(gs->tracer(), "typecheck");
         if (preemptionManager) {
             // Before kicking off typechecking, check if we need to preempt.
-            (*preemptionManager)->tryRunScheduledPreemptionTask();
+            (*preemptionManager)->tryRunScheduledPreemptionTask(*gs);
         }
 
         shared_ptr<ConcurrentBoundedQueue<ast::ParsedFile>> fileq;
@@ -1005,7 +1005,7 @@ ast::ParsedFilesOrCancelled typecheck(unique_ptr<core::GlobalState> &gs, vector<
                     cfgInferProgress.reportProgress(fileq->doneEstimate());
                     gs->errorQueue->flushErrors();
                     if (preemptionManager) {
-                        (*preemptionManager)->tryRunScheduledPreemptionTask();
+                        (*preemptionManager)->tryRunScheduledPreemptionTask(*gs);
                     }
                 }
                 if (cancelable && epochManager->wasTypecheckingCanceled()) {

@@ -322,6 +322,47 @@ TEST_P(ProtocolTest, CanPreemptSlowPathWithFastPathAndThenCancelBoth) {
                       });
 }
 
+TEST_P(ProtocolTest, CanPreemptSlowPathWithFastPathAndBothErrorsAreReported) {
+    auto initOptions = make_unique<SorbetInitializationOptions>();
+    initOptions->enableTypecheckInfo = true;
+    assertDiagnostics(initializeLSP(true /* supportsMarkdown */, move(initOptions)), {});
+
+    // Create three new files! foo.rb defines a class, bar.rb defines a class and method used in baz.rb.
+    assertDiagnostics(send(*openFile("foo.rb", "# typed: true\nclass Foo\nextend T::Sig\nend")), {});
+    assertDiagnostics(
+        send(*openFile("bar.rb",
+                       "# typed: true\nclass Bar\nextend T::Sig\nsig{returns(String)}\ndef str\n'hi'\nend\nend\n")),
+        {});
+    assertDiagnostics(
+        send(*openFile(
+            "baz.rb",
+            "# typed: true\nclass Baz\nextend T::Sig\nsig{returns(String)}\ndef bar\nBar.new.str\nend\nend\n")),
+        {});
+
+    // Slow path: foo.rb will have a syntax error
+    sendAsync(*changeFile("foo.rb", "# typed: true\nclass Foo\nextend T::Sig", 2, false, 1));
+
+    // Wait for typechecking to begin to avoid races.
+    {
+        auto status = getTypecheckRunStatus(*readAsync());
+        ASSERT_TRUE(status.has_value());
+        ASSERT_EQ(*status, SorbetTypecheckRunStatus::Started);
+    }
+
+    // Fast path [preempt]: Change return type in bar.rb, which indirectly causes an error in baz.rb too.
+    sendAsync(*changeFile(
+        "bar.rb", "# typed: true\nclass Bar\nextend T::Sig\nsig{returns(Integer)}\ndef str\n'hi'\nend\nend\n", 4));
+
+    // We should receive errors for `foo`, `bar`, and `baz`.
+    // Send a no-op to clear out the pipeline.
+    assertDiagnostics(send(LSPMessage(make_unique<NotificationMessage>("2.0", LSPMethod::SorbetFence, 20))),
+                      {
+                          {"foo.rb", 2, "unexpected token"},
+                          {"bar.rb", 5, "Returning value that does not conform to method result type"},
+                          {"baz.rb", 5, "Returning value that does not conform to method result type"},
+                      });
+}
+
 // Run these tests in multi-threaded mode.
 INSTANTIATE_TEST_SUITE_P(MultithreadedProtocolTests, ProtocolTest, testing::Values(true));
 
