@@ -387,3 +387,20 @@ module Socket::Constants
    TCP_NOPUSH = nil
    SO_BPF_EXTENSIONS = nil
 end
+
+class Socket
+   IPV6_USE_MIN_MTU = nil
+end
+
+module Socket::Constants
+   IPV6_USE_MIN_MTU = nil
+end
+
+class Etc::Passwd
+  def change(); end
+  def change=(); end
+  def expire(); end
+  def expire=(); end
+  def uclass(); end
+  def uclass=(); end
+end
